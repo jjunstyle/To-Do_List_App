@@ -1,32 +1,68 @@
 // ==========================================================================
 // 데이터 관리 로직
+// (Supabase "To_Do_List" 테이블이 단일 소스다. 로컬 todos 배열은 그 캐시로,
+//  변경 함수는 캐시를 먼저 낙관적으로 갱신해 화면이 즉시 반응하게 만들고
+//  Supabase 쓰기는 persist* 함수를 통해 백그라운드로 던진다 — 호출부는
+//  이전 saveTodos()처럼 따로 기다리거나 저장을 신경 쓸 필요가 없고,
+//  네트워크 실패 시에는 콘솔에만 에러를 남긴다)
 // ==========================================================================
 
-const STORAGE_KEY = 'todos';
+const SUPABASE_URL = 'https://aosiieamvurouzcqgzcr.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_U_QdF_dcMQnW_iYEi-MFUQ_4EtfM81M';
+const TABLE_NAME = 'To_Do_List';
 
-let todos = loadTodos();
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let todos = [];
 let idCounter = 0;
 
 function generateId() {
   return `${Date.now()}-${idCounter++}`;
 }
 
-function loadTodos() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
+async function loadTodos() {
+  const { data, error } = await supabaseClient
+    .from(TABLE_NAME)
+    .select('*')
+    .order('createdAt', { ascending: true });
+
+  if (error) {
+    console.error('할 일 목록을 불러오지 못했습니다:', error);
     return [];
   }
+  return data;
 }
 
-function saveTodos(todos) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+function persistInsert(todo) {
+  supabaseClient
+    .from(TABLE_NAME)
+    .insert(todo)
+    .then(({ error }) => {
+      if (error) console.error('할 일 저장에 실패했습니다:', error);
+    });
 }
 
-function addTodo(text, category) {
+function persistUpdate(id, changes) {
+  supabaseClient
+    .from(TABLE_NAME)
+    .update(changes)
+    .eq('id', id)
+    .then(({ error }) => {
+      if (error) console.error('할 일 수정에 실패했습니다:', error);
+    });
+}
+
+function persistDelete(id) {
+  supabaseClient
+    .from(TABLE_NAME)
+    .delete()
+    .eq('id', id)
+    .then(({ error }) => {
+      if (error) console.error('할 일 삭제에 실패했습니다:', error);
+    });
+}
+
+function addTodo(text, category, dueDate) {
   const trimmed = (text || '').trim();
   if (!trimmed) return;
 
@@ -36,25 +72,27 @@ function addTodo(text, category) {
     category,
     completed: false,
     createdAt: Date.now(),
+    dueDate: dueDate || null,
   };
 
   todos.push(newTodo);
-  saveTodos(todos);
+  persistInsert(newTodo);
   return newTodo;
 }
 
-function updateTodo(id, newText, newCategory) {
+function updateTodo(id, newText, newCategory, newDueDate) {
   const todo = todos.find((t) => t.id === id);
   if (!todo) return;
 
   todo.text = (newText || '').trim();
   todo.category = newCategory;
-  saveTodos(todos);
+  todo.dueDate = newDueDate || null;
+  persistUpdate(id, { text: todo.text, category: todo.category, dueDate: todo.dueDate });
 }
 
 function deleteTodo(id) {
   todos = todos.filter((t) => t.id !== id);
-  saveTodos(todos);
+  persistDelete(id);
 }
 
 function toggleComplete(id) {
@@ -62,7 +100,7 @@ function toggleComplete(id) {
   if (!todo) return;
 
   todo.completed = !todo.completed;
-  saveTodos(todos);
+  persistUpdate(id, { completed: todo.completed });
 }
 
 function getRemainingCount(todos) {
@@ -84,7 +122,7 @@ const FILTER_CODE_TO_LABEL = { all: null, work: '업무', study: '학습', daily
 // ==========================================================================
 
 const CATEGORY_KEYWORDS = {
-  work: ['회의', '보고서', '이메일', '미팅', '프로젝트', '발표', '출장', '결재', '기획', '계약', '고객', '클라이언트', '마감', '업무', '회사', '면접', '인터뷰', '품의', '예산', '컸퍼런스'],
+  work: ['회의', '보고서', '이메일', '미팅', '프로젝트', '발표', '출장', '결재', '기획', '계약', '고객', '클라이언트', '마감', '업무', '회사', '면접', '인터뷰', '품의', '예산', '컴퍼런스'],
   study: ['공부', '강의', '시험', '과제', '수업', '자격증', '코딩', '알고리즘', '논문', '복습', '예습', '스터디', '독서', '토익', '토플', '학원', '수강', '문제집', '단어장', '학습'],
   daily: ['장보기', '청소', '빨래', '운동', '헬스', '산책', '병원', '약속', '가족', '저녁', '요리', '쇼핑', '은행', '세탁', '여행', '취미', '반려동물', '강아지', '고양이', '생일', '약국', '미용실'],
 };
@@ -102,6 +140,29 @@ function detectCategoryFromText(text) {
 }
 
 // ==========================================================================
+// 날짜 포맷팅
+// (Input Date는 생성 시각(createdAt, epoch ms)을, Due Date는
+//  <input type="date">가 내놓는 "YYYY-MM-DD" 문자열을 받아
+//  화면 표기용 "YYYY/MM/DD" 문자열로 바꿔다)
+// ==========================================================================
+
+function formatTimestampYMD(timestamp) {
+  const date = new Date(timestamp);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}/${m}/${d}`;
+}
+
+function formatDueDateYMD(isoDateStr) {
+  if (!isoDateStr) return '';
+  // Date 객체로 파싱하면 로컬 타임존에 따라 하루가 밀릴 수 있어
+  // "YYYY-MM-DD" 문자열을 직접 쪽개 재조립한다.
+  const [y, m, d] = isoDateStr.split('-');
+  return `${y}/${m}/${d}`;
+}
+
+// ==========================================================================
 // DOM 참조
 // ==========================================================================
 
@@ -109,6 +170,7 @@ const taskListEl = document.querySelector('.task-list');
 const filterTabsEl = document.querySelector('.filter-tabs');
 const addInputEl = document.querySelector('.add-task__input');
 const addCategoryEl = document.querySelector('.add-task__category');
+const addDueDateEl = document.querySelector('.add-task__due-date');
 const addButtonEl = document.querySelector('.add-task__button');
 const addHintEl = document.querySelector('.add-task__hint');
 const headlineEl = document.querySelector('.masthead__headline');
@@ -123,7 +185,7 @@ let categoryManuallySet = false;
 
 // 취소선 애니메이션(CSS transition: 0.45s)이 끝날 때까지 기다린 뒤
 // 완료 항목을 하단으로 재정렬하기 위한 지연 시간. style.css의
-// .task-item__text::after transition-duration와 반드시 같은 값을 유지한다.
+// .task-item__text::after transition-duration과 반드시 같은 값을 유지한다.
 const STRIKE_ANIMATION_MS = 450;
 
 // ==========================================================================
@@ -199,6 +261,10 @@ function createTaskItemElement(todo, index) {
         </svg>
       </button>
     </div>
+    <div class="task-item__meta">
+      <span class="task-item__meta-item task-item__meta-item--created">입력일 ${formatTimestampYMD(todo.createdAt)}</span>
+      ${todo.dueDate ? `<span class="task-item__meta-item task-item__meta-item--due">마감일 ${formatDueDateYMD(todo.dueDate)}</span>` : ''}
+    </div>
   `;
 
   li.querySelector('.task-item__text').textContent = todo.text;
@@ -222,31 +288,63 @@ function enterEditMode(li) {
   if (li.classList.contains('is-editing')) return;
 
   const textEl = li.querySelector('.task-item__text');
-  if (!textEl) return;
+  const metaEl = li.querySelector('.task-item__meta');
+  if (!textEl || !metaEl) return;
 
-  const originalText = textEl.textContent;
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.className = 'task-item__edit-input';
-  input.value = originalText;
+  const id = li.dataset.id;
+  const todo = todos.find((t) => t.id === id);
+  if (!todo) return;
+
+  const textInput = document.createElement('input');
+  textInput.type = 'text';
+  textInput.className = 'task-item__edit-input';
+  textInput.value = textEl.textContent;
+
+  const dueDateInput = document.createElement('input');
+  dueDateInput.type = 'date';
+  dueDateInput.className = 'task-item__edit-due-date';
+  dueDateInput.setAttribute('aria-label', '마감일 수정 (선택 사항)');
+  dueDateInput.value = todo.dueDate || '';
+
+  const dueDateWrap = document.createElement('span');
+  dueDateWrap.className = 'task-item__meta-item';
+  dueDateWrap.append('마감일 ', dueDateInput);
 
   li.classList.add('is-editing');
-  textEl.replaceWith(input);
-  input.focus();
-  input.select();
+  textEl.replaceWith(textInput);
 
-  input.addEventListener('keydown', (e) => {
+  const existingDueEl = metaEl.querySelector('.task-item__meta-item--due');
+  if (existingDueEl) {
+    existingDueEl.replaceWith(dueDateWrap);
+  } else {
+    metaEl.appendChild(dueDateWrap);
+  }
+
+  textInput.focus();
+  textInput.select();
+
+  function commitEdit() {
+    updateTodo(id, textInput.value, todo.category, dueDateInput.value);
+    applyFilterAndRender();
+  }
+
+  textInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       // add-task__input과 동일한 이유로 IME 조합 확정 Enter는 무시한다.
       if (e.isComposing || e.keyCode === 229) return;
 
       e.preventDefault();
-      const id = li.dataset.id;
-      const todo = todos.find((t) => t.id === id);
-      if (todo) {
-        updateTodo(id, input.value, todo.category);
-      }
+      commitEdit();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
       applyFilterAndRender();
+    }
+  });
+
+  dueDateInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commitEdit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
       applyFilterAndRender();
@@ -266,7 +364,7 @@ addInputEl.addEventListener('keydown', (e) => {
   // 한글 등 IME 조합 중 Enter는 조합 확정용 keydown과 실제 Enter keydown이
   // 연달아 발생할 수 있다. 조합 확정 이벤트를 그대로 처리하면 같은 Enter로
   // addTodo가 두 번 호출되고, 두 번째 호출은 입력창을 비운 직후 IME가 마지막
-  // 글자를 다시 흘려 넣은 값을 읽어 "마지막 글자만 있는 할 일"이 추가된다.
+  // 글자를 다시 흔려 넣은 값을 읽어 "마지막 글자만 있는 할 일"이 추가된다.
   // isComposing(구형 Safari 대비 keyCode 229도 함께 확인)이면 무시한다.
   if (e.isComposing || e.keyCode === 229) return;
 
@@ -276,10 +374,11 @@ addInputEl.addEventListener('keydown', (e) => {
 
 function handleAddTodo() {
   const categoryLabel = CATEGORY_CODE_TO_LABEL[addCategoryEl.value];
-  const created = addTodo(addInputEl.value, categoryLabel);
+  const created = addTodo(addInputEl.value, categoryLabel, addDueDateEl.value);
   if (!created) return;
 
   addInputEl.value = '';
+  addDueDateEl.value = '';
   addHintEl.textContent = '';
   categoryManuallySet = false;
   applyFilterAndRender();
@@ -355,11 +454,17 @@ taskListEl.addEventListener('dblclick', (e) => {
 // 초기 로드
 // ==========================================================================
 
-if (todos.length === 0) {
-  addTodo('분기 보고서 초안 작성', '업무');
-  addTodo('타입스크립트 제네릭 정리', '학습');
-  const seeded = addTodo('장보기 — 우유 · 계란 · 식빵', '일상');
-  if (seeded) toggleComplete(seeded.id);
+async function init() {
+  todos = await loadTodos();
+
+  if (todos.length === 0) {
+    addTodo('분기 보고서 초안 작성', '업무');
+    addTodo('타입스크립트 제네릭 정리', '학습');
+    const seeded = addTodo('장보기 — 우유 · 계란 · 식빵', '일상');
+    if (seeded) toggleComplete(seeded.id);
+  }
+
+  applyFilterAndRender();
 }
 
-applyFilterAndRender();
+init();
