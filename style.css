@@ -222,7 +222,8 @@ ul {
 }
 
 .add-task__input,
-.add-task__category {
+.add-task__category,
+.add-task__due-date {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-pill);
   background: var(--glass-bg-strong);
@@ -237,8 +238,16 @@ ul {
   color: var(--color-ink-faint);
 }
 
+.add-task__due-date {
+  width: 100%;
+  cursor: pointer;
+  /* 다크 OS 테마에서도 브라우저 기본 달력 아이콘이 흰 배경 위에서 보이도록 고정 */
+  color-scheme: light;
+}
+
 .add-task__input:focus-visible,
-.add-task__category:focus-visible {
+.add-task__category:focus-visible,
+.add-task__due-date:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
@@ -360,7 +369,8 @@ ul {
   grid-template-columns: auto auto 1fr auto;
   grid-template-areas:
     "check index category actions"
-    "check text   text     text";
+    "check text   text     text"
+    "check meta   meta     meta";
   align-items: center;
   column-gap: 12px;
   row-gap: 8px;
@@ -430,6 +440,41 @@ ul {
   grid-area: index;
   font-size: 12px;
   color: var(--color-ink-faint);
+}
+
+.task-item__meta {
+  grid-area: meta;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.task-item__meta-item {
+  color: var(--color-ink-faint);
+}
+
+.task-item__meta-item--due {
+  color: var(--color-ink-soft);
+}
+
+.task-item__edit-due-date {
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  color: var(--color-ink);
+  background: var(--glass-bg-strong);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  margin-left: 4px;
+  cursor: pointer;
+  color-scheme: light;
+}
+
+.task-item__edit-due-date:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .task-item__text {
@@ -574,13 +619,19 @@ ul {
     flex: 0 0 150px;
   }
 
+  .add-task__due-date {
+    flex: 0 0 170px;
+  }
+
   .add-task__button {
     flex: 0 0 120px;
   }
 
   .task-item {
     grid-template-columns: auto auto 1fr auto auto;
-    grid-template-areas: "check index text category actions";
+    grid-template-areas:
+      "check index text category actions"
+      "check .     meta meta     .";
     column-gap: 16px;
   }
 
