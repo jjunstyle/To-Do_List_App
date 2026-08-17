@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A static, framework-free to-do list app: `index.html`, `style.css`, `script.js`. No build tooling, no package manager, no dependencies (the only external resource is a Google Fonts stylesheet link in `index.html`).
+A static, framework-free to-do list app: `index.html`, `style.css`, `script.js`. No build tooling, no package manager. External resources: a Google Fonts stylesheet link and the `@supabase/supabase-js` v2 UMD bundle, both loaded via `<script>`/`<link>` tags in `index.html` (no bundler, no `node_modules`).
+
+Data is persisted in a Supabase Postgres project (see Data layer below) rather than `localStorage`.
 
 ## Commands
 
@@ -15,15 +17,19 @@ python3 -m http.server 8791
 # then open http://localhost:8791/index.html
 ```
 
-There is no automated test suite — verification has been done manually through browser automation (loading the page, exercising each interaction, checking `localStorage` and console output).
+There is no automated test suite — verification has been done manually through browser automation (loading the page, exercising each interaction, checking the Supabase `"To_Do_List"` table via the Supabase MCP `execute_sql` tool, and checking console output).
 
 ## Architecture
 
 ### Data layer (`script.js`, top section)
 
-`todos` is a single in-memory array, the source of truth, persisted to `localStorage` under the key `"todos"` via `loadTodos()` / `saveTodos()`. `loadTodos()` fails safe: any missing key, JSON parse error, or non-array value returns `[]` rather than throwing.
+Todos are persisted in a Supabase Postgres table, `"To_Do_List"` (project ref `aosiieamvurouzcqgzcr`, mixed-case name requires quoting in raw SQL — always `"To_Do_List"`, never unquoted). `SUPABASE_URL` and `SUPABASE_ANON_KEY` are hardcoded in `script.js`; the anon/publishable key is meant to be public (it's the browser-side key), but there is no user auth in this app, so RLS policies on the table grant the `anon` role full `select`/`insert`/`update`/`delete` — anyone with the page open can read or write any row. That's an intentional tradeoff for a single-user local app moved onto a shared backend, not an oversight; don't "fix" it by tightening RLS without checking with the user first, since that would break writes entirely without an auth layer to replace it.
 
-Mutation functions (`addTodo`, `updateTodo`, `deleteTodo`, `toggleComplete`) all mutate the module-level `todos` array directly and call `saveTodos(todos)` themselves — callers never need to persist manually. `addTodo`/`updateTodo` trim text and silently no-op on whitespace-only input. IDs come from `generateId()` (`` `${Date.now()}-${idCounter++}` ``); a plain `Date.now()` was tried first and rejected because two `addTodo()` calls in the same millisecond produced colliding IDs that corrupted `updateTodo`/`deleteTodo` — keep the counter suffix if touching ID generation.
+Table columns are quoted to exactly match the JS object keys used throughout the rest of the app (`id`, `text`, `category`, `completed`, `"createdAt"` bigint epoch-ms, `"dueDate"` nullable date) — this lets `supabaseClient.from(TABLE_NAME).insert(newTodo)` take the in-memory todo object as-is and lets rendering code keep reading `todo.createdAt` / `todo.dueDate` unchanged. If columns are ever added, keep this camelCase-quoted convention rather than switching to snake_case, or every read site in rendering/formatting breaks silently (PostgREST matches column names case-sensitively).
+
+`todos` is a single in-memory array — a **cache** of the table, not the source of truth. Mutation functions (`addTodo`, `updateTodo`, `deleteTodo`, `toggleComplete`) update this cache **synchronously and optimistically first** (so the UI reacts instantly, preserving the original localStorage-era call signatures — callers don't `await` them), then fire a background Supabase write via `persistInsert`/`persistUpdate`/`persistDelete`, which are fire-and-forget (`.then()`, not awaited) and only `console.error` on failure. This means a failed write leaves the UI showing a state the database doesn't have until the next reload — acceptable for this app's scope, but worth knowing when debugging a "changes don't stick after refresh" report. `addTodo`/`updateTodo` trim text and silently no-op on whitespace-only input. IDs come from `generateId()` (`` `${Date.now()}-${idCounter++}` ``); a plain `Date.now()` was tried first and rejected because two `addTodo()` calls in the same millisecond produced colliding IDs that corrupted `updateTodo`/`deleteTodo` — keep the counter suffix if touching ID generation.
+
+`loadTodos()` is `async` (a real network call via `supabaseClient...select('*')`) and fails safe: any Supabase error is logged via `console.error` and an empty array is returned rather than throwing. Because loading is async, app startup goes through `async function init()` at the bottom of `script.js` (populates `todos`, seeds example data if the table came back empty, then calls `applyFilterAndRender()`), not a top-level synchronous assignment — there is a brief blank `.task-list` until the initial fetch resolves.
 
 ### Category code ↔ label mapping
 
@@ -55,7 +61,7 @@ Modern glassmorphism, chosen after an earlier "editorial grid, no gradients/blur
 
 If asked to touch visual design again, ask which direction currently applies rather than assuming; do not silently revert to the editorial look.
 
-Mobile-first with a single breakpoint at `@media (min-width: 640px)`; below it, `.task-item` uses a 2-row CSS grid (`grid-template-areas`), above it a 1-row layout — if the item markup changes, both `grid-template-areas` blocks need updating together.
+Mobile-first with a single breakpoint at `@media (min-width: 640px)`; below it, `.task-item` uses a 3-row CSS grid (`grid-template-areas`: check/index/category/actions, then text, then the `.task-item__meta` date row), above it a 2-row layout (check/index/text/category/actions, then a `meta` row under text+category). If the item markup changes, both `grid-template-areas` blocks need updating together.
 
 `.task-item__text` intentionally uses `justify-self: start` (not the grid default of stretch) so the element's own width matches its text content — the strike-through (`::after`, width-animated 0→100%) is sized as a percentage of that element, so letting it stretch to the full grid column would make the strike line run past the visible text.
 
@@ -63,4 +69,10 @@ Focus is always visible (`:focus-visible` outlines on inputs, buttons, filter ta
 
 ### Initial seed data
 
-If `loadTodos()` returns an empty array on first load, `script.js`'s init block seeds three example todos (matching the original static mockup) directly through `addTodo()`/`toggleComplete()`, rather than via hardcoded HTML — `index.html`'s `<ul class="task-list">` starts empty and is always populated by JS.
+If `loadTodos()` resolves to an empty array (empty `"To_Do_List"` table) on first load, `init()` seeds three example todos (matching the original static mockup) directly through `addTodo()`/`toggleComplete()`, rather than via hardcoded HTML — `index.html`'s `<ul class="task-list">` starts empty and is always populated by JS. Because this only fires when the table is empty, it runs once ever per Supabase project, not once per browser/device like the old localStorage version did.
+
+### Input Date / Due Date
+
+Every todo carries `createdAt` (epoch ms, set once at creation, never edited) and an optional `dueDate` (`"YYYY-MM-DD"`, the native value of an `<input type="date">`). `formatTimestampYMD()` / `formatDueDateYMD()` in the "날짜 포맷팅" section convert these to the `YYYY/MM/DD` display format shown in each task item's `.task-item__meta` row (입력일 / 마감일). `formatDueDateYMD` deliberately splits the ISO string instead of parsing it through `Date`, to avoid a timezone-driven off-by-one-day bug.
+
+Unlike category, due date **is** editable after creation: `enterEditMode()` swaps in a `.task-item__edit-due-date` date input alongside the text input, and `updateTodo()` accepts a `newDueDate` argument (empty string → `null`, i.e. clears it). If new editable fields are added to the edit flow, follow this same pattern (replace/append into `.task-item__meta`, read the value in `commitEdit()`).
