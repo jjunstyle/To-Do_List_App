@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
 
@@ -16,7 +17,6 @@
   <header class="masthead">
     <div class="masthead__top">
       <h1 class="masthead__title">할 일 관리</h1>
-      <span class="masthead__meta">TASK JOURNAL — VOL. 01</span>
     </div>
 
     <div class="masthead__headline">
@@ -37,6 +37,11 @@
       <option value="study">학습</option>
       <option value="daily">일상</option>
     </select>
+    <input
+      type="date"
+      class="add-task__due-date"
+      aria-label="마감일 선택 (선택 사항)"
+    >
     <button type="button" class="add-task__button">추가</button>
   </section>
 
