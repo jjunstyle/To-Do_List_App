@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>할 일 관리</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="masthead__top">
+      <h1 class="masthead__title">할 일 관리</h1>
+      <span class="masthead__meta">TASK JOURNAL — VOL. 01</span>
+    </div>
+
+    <div class="masthead__headline">
+      <span class="headline__number">3</span>
+      <span class="headline__caption">개의 할 일이<br>남아있습니다</span>
+    </div>
+  </header>
+
+  <section class="add-task" aria-label="할 일 추가">
+    <input
+      type="text"
+      class="add-task__input"
+      placeholder="새로운 할 일을 입력하세요"
+      aria-label="할 일 내용"
+    >
+    <select class="add-task__category" aria-label="카테고리 선택">
+      <option value="work">업무</option>
+      <option value="study">학습</option>
+      <option value="daily">일상</option>
+    </select>
+    <button type="button" class="add-task__button">추가</button>
+  </section>
+
+  <p class="add-task__hint" aria-live="polite"></p>
+
+  <nav class="filter-tabs" aria-label="카테고리 필터">
+    <button type="button" class="filter-tab is-active" data-filter="all">전체</button>
+    <button type="button" class="filter-tab" data-filter="work">업무</button>
+    <button type="button" class="filter-tab" data-filter="study">학습</button>
+    <button type="button" class="filter-tab" data-filter="daily">일상</button>
+  </nav>
+
+  <ul class="task-list"></ul>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
