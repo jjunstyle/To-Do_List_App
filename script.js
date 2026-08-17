@@ -122,7 +122,7 @@ const FILTER_CODE_TO_LABEL = { all: null, work: '업무', study: '학습', daily
 // ==========================================================================
 
 const CATEGORY_KEYWORDS = {
-  work: ['회의', '보고서', '이메일', '미팅', '프로젝트', '발표', '출장', '결재', '기획', '계약', '고객', '클라이언트', '마감', '업무', '회사', '면접', '인터뷰', '품의', '예산', '컴퍼런스'],
+  work: ['회의', '보고서', '이메일', '미팅', '프로젝트', '발표', '출장', '결재', '기획', '계약', '고객', '클라이언트', '마감', '업무', '회사', '면접', '인터뷰', '품의', '예산', '컨퍼런스'],
   study: ['공부', '강의', '시험', '과제', '수업', '자격증', '코딩', '알고리즘', '논문', '복습', '예습', '스터디', '독서', '토익', '토플', '학원', '수강', '문제집', '단어장', '학습'],
   daily: ['장보기', '청소', '빨래', '운동', '헬스', '산책', '병원', '약속', '가족', '저녁', '요리', '쇼핑', '은행', '세탁', '여행', '취미', '반려동물', '강아지', '고양이', '생일', '약국', '미용실'],
 };
@@ -143,7 +143,7 @@ function detectCategoryFromText(text) {
 // 날짜 포맷팅
 // (Input Date는 생성 시각(createdAt, epoch ms)을, Due Date는
 //  <input type="date">가 내놓는 "YYYY-MM-DD" 문자열을 받아
-//  화면 표기용 "YYYY/MM/DD" 문자열로 바꿔다)
+//  화면 표기용 "YYYY/MM/DD" 문자열로 바꾼다)
 // ==========================================================================
 
 function formatTimestampYMD(timestamp) {
@@ -157,7 +157,7 @@ function formatTimestampYMD(timestamp) {
 function formatDueDateYMD(isoDateStr) {
   if (!isoDateStr) return '';
   // Date 객체로 파싱하면 로컬 타임존에 따라 하루가 밀릴 수 있어
-  // "YYYY-MM-DD" 문자열을 직접 쪽개 재조립한다.
+  // "YYYY-MM-DD" 문자열을 직접 쪼개 재조립한다.
   const [y, m, d] = isoDateStr.split('-');
   return `${y}/${m}/${d}`;
 }
@@ -364,7 +364,7 @@ addInputEl.addEventListener('keydown', (e) => {
   // 한글 등 IME 조합 중 Enter는 조합 확정용 keydown과 실제 Enter keydown이
   // 연달아 발생할 수 있다. 조합 확정 이벤트를 그대로 처리하면 같은 Enter로
   // addTodo가 두 번 호출되고, 두 번째 호출은 입력창을 비운 직후 IME가 마지막
-  // 글자를 다시 흔려 넣은 값을 읽어 "마지막 글자만 있는 할 일"이 추가된다.
+  // 글자를 다시 흘려 넣은 값을 읽어 "마지막 글자만 있는 할 일"이 추가된다.
   // isComposing(구형 Safari 대비 keyCode 229도 함께 확인)이면 무시한다.
   if (e.isComposing || e.keyCode === 229) return;
 
@@ -385,7 +385,7 @@ function handleAddTodo() {
   addInputEl.focus();
 }
 
-// 카테고리를 직접 고르면 이번 입력에 한해 자동 분류를 멈추다.
+// 카테고리를 직접 고르면 이번 입력에 한해 자동 분류를 멈춘다.
 addCategoryEl.addEventListener('change', () => {
   categoryManuallySet = true;
   addHintEl.textContent = '';
